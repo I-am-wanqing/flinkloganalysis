@@ -1,0 +1,92 @@
+version: '3.8'
+
+# 定义网络
+networks:
+  flink-net:
+    driver: bridge # 使用桥接网络驱动
+
+services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:6.2.1
+    container_name: zookeeper
+    ports: # 映射端口，2181 是 Zookeeper 的默认端口
+      - "2181:2181"
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181 # 设置 Zookeeper 的客户端端口
+    networks:
+      - flink-net # 将服务连接到 flink-net 网络
+
+  kafka:
+    image: confluentinc/cp-kafka:6.2.1
+    container_name: kafka
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    networks:
+      - flink-net
+    depends_on:
+      - zookeeper # 确保 Zookeeper 服务先启动
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.10.2
+    container_name: elasticsearch
+    environment:
+      - discovery.type=single-node # 设置为单节点模式
+    ports:
+      - "9200:9200" # 映射端口，9200 是 Elasticsearch 的默认 HTTP 端口
+      - "9300:9300" # 映射端口，9300 是 Elasticsearch 的默认传输端口
+    networks:
+      - flink-net
+
+  grafana:
+    image: grafana/grafana
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin # 设置 Grafana 的管理员密码
+    networks:
+      - flink-net
+    depends_on:
+      - elasticsearch # 确保 Elasticsearch 服务先启动
+
+  jobmanager:
+    image: flink:latest
+    environment:
+      - JOB_MANAGER_RPC_ADDRESS=jobmanager
+    ports:
+      - "8081:8081"
+    command: jobmanager
+    networks:
+      - flink-net
+
+  taskmanager:
+    image: flink:latest
+    depends_on:
+      - jobmanager
+    environment:
+      - JOB_MANAGER_RPC_ADDRESS=jobmanager
+    command: taskmanager
+    networks:
+      - flink-net
+    deploy:
+      replicas: 2  # 配置两个 Task Manager 节点
+
+  mysql:
+    image: mysql:8.0
+    container_name: mysql-server
+    environment:
+      - MYSQL_ROOT_PASSWORD=123456love
+      - MYSQL_DATABASE=log_data
+      - MYSQL_USER=wanqing
+      - MYSQL_PASSWORD=123456love
+    ports:
+      - "3306:3306" # 映射端口，3306 是 MySQL 的默认端口
+    networks:
+      - flink-net
+
+
